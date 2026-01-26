@@ -4,7 +4,16 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 
+import { performDeepResearch } from './deepResearchService.js';
+import type { ChatRequest } from './types.js';
+
 dotenv.config();
+
+// Validation
+if (!process.env.DEEPSEEK_API_KEY) {
+    console.error('CRITICAL: DEEPSEEK_API_KEY is missing in environment variables.');
+    process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -17,45 +26,41 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-app.get('/api/hello', (req: Request, res: Response) => {
-    res.json({ message: 'Hello from Express + TypeScript!' });
+app.get('/api/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok' });
 });
-
-const chatHistory: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: "You are a helpful assistant. Please respond in the same language as the user's message." }
-];
 
 app.post('/api/chat', async (req: Request, res: Response) => {
     try {
-        const { message, isDeeperResearch } = req.body;
+        const { message, isDeeperResearch, history = [] } = req.body as ChatRequest;
 
-        // Add user message to history
-        chatHistory.push({ role: 'user', content: message });
-
-        const messages = [...chatHistory];
-
-        // If DeeperResearch is enabled, we can prepend a technical instruction or change behavior
-        if (isDeeperResearch) {
-            messages.unshift({
-                role: 'system',
-                content: "DEEPER RESEARCH MODE ENABLED: Provide extremely thorough, multi-step analysis. Use academic terminology and ensure every claim is logically sound. Focus on structural depth."
-            });
+        if (!message) {
+            return res.status(400).json({ error: 'Message is required' });
         }
 
-        const response = await openai.chat.completions.create({
-            model: 'deepseek-chat',
-            messages: messages,
-        });
+        // We now use the history provided by the client to keep the server stateless
+        const currentHistory = [...history, { role: 'user', content: message } as const];
 
-        const reply = response.choices[0]?.message?.content || 'No response from AI';
+        let reply = '';
+        let requiresClarification = false;
 
-        // Add assistant reply to history
-        chatHistory.push({ role: 'assistant', content: reply });
+        if (isDeeperResearch) {
+            // Note: performDeepResearch might do multiple internal calls
+            const result = await performDeepResearch(openai, message, history);
+            reply = result.reply;
+            requiresClarification = result.requiresClarification || false;
+        } else {
+            const response = await openai.chat.completions.create({
+                model: 'deepseek-chat',
+                messages: currentHistory as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+            });
+            reply = response.choices[0]?.message?.content || 'No response from AI';
+        }
 
-        res.json({ reply });
+        res.json({ reply, requiresClarification });
     } catch (error) {
-        console.error('DeepSeek API Error:', error);
-        res.status(500).json({ error: 'Failed to fetch from DeepSeek' });
+        console.error('Chat API Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

@@ -65,6 +65,30 @@ h6 {
   }
 }
 
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progress {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .animate-in {
   animation-duration: 0.7s;
   animation-fill-mode: both;
@@ -76,4 +100,12 @@ h6 {
 
 .slide-in-from-bottom-4 {
   animation-name: slide-in-from-bottom;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.animate-progress {
+  animation: progress 2s ease-in-out infinite;
 }
