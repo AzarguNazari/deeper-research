@@ -1,15 +1,18 @@
 import OpenAI from 'openai';
 import type { DeepResearchResult, ResearchPlan, ResearchTrack } from './types.js';
 
+const MODEL = 'deepseek-chat';
+
 export async function performDeepResearch(
     openai: OpenAI,
     message: string,
-    history: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+    history: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    signal?: AbortSignal
 ): Promise<DeepResearchResult> {
-    console.log('--- Starting Agentic Deep Research ---');
+    console.log('\n--- Starting Deep Research ---');
 
-    // 1. Initial Plan & Clarification Check
-    const plan = await designResearchPlan(openai, message, history);
+    console.log('Architecting research plan...');
+    const plan = await designResearchPlan(openai, message, history, signal);
 
     if (plan.needsClarification) {
         return {
@@ -19,42 +22,41 @@ export async function performDeepResearch(
     }
 
     const tracks = plan.researchTracks || [];
+    console.log(`Launching ${tracks.length} research agents in parallel...`);
+    
+    const researchCorpus = await conductInvestigation(openai, message, tracks, signal);
 
-    // 2. Parallel Agentic Investigation
-    const researchCorpus = await conductInvestigation(openai, message, tracks);
+    console.log('Synthesizing all agent findings...');
+    let finalAnswer = await synthesizeFindings(openai, message, researchCorpus, signal);
+    
+    console.log('Running final quality reflection...');
+    finalAnswer = await runReflectionLoop(openai, message, finalAnswer, signal);
 
-    // 3. Global Synthesis & Cross-Correlation
-    let finalAnswer = await synthesizeFindings(openai, message, researchCorpus);
-
-    // 4. Self-Reflective Optimization Layer
-    finalAnswer = await runReflectionLoop(openai, message, finalAnswer);
-
-    console.log('--- Deep Research Complete ---');
+    console.log('--- Deep Research Complete ---\n');
     return { reply: finalAnswer };
 }
 
 async function designResearchPlan(
     openai: OpenAI,
     message: string,
-    history: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+    history: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    signal?: AbortSignal
 ): Promise<ResearchPlan> {
     const response = await openai.chat.completions.create({
-        model: 'deepseek-chat',
+        model: MODEL,
         messages: [
             {
                 role: 'system',
-                content: `You are a Lead Research Architect. Your goal is to ensure the research is "World-Class" and "Definitive."
+                content: `You are a Lead Research Architect. Ensure the research is World-Class and Definitive.
                 
-CRITICAL INSTRUCTION:
-Deep Research requires high-resolution context. If the user's query is broad (e.g., "tell me about AI"), you MUST ask for clarification. 
-Do not start research if any of the following are missing or ambiguous:
-- Geographic scope (Global vs Local)
-- Time horizon (Present vs 2030 vs 2050)
-- Target Audience/Perspective (Economic, Technical, Ethical)
-- Specific Success Criteria (What would make this the "best" answer?)
+If the query is broad, ask for clarification on:
+- Geographic scope
+- Time horizon
+- Target Audience
+- Success Criteria
 
-If clarification is needed: Set 'needsClarification' to true and provide 3-4 highly targeted questions.
-If enough context exists: Design 4-6 specific research tracks.
+If clarification is needed: Set 'needsClarification' to true and provide questions.
+If context exists: Design 4-6 specific research tracks.
 
 Format ONLY as JSON:
 {
@@ -69,7 +71,7 @@ Format ONLY as JSON:
             { role: 'user', content: message }
         ],
         response_format: { type: 'json_object' }
-    });
+    }, { signal });
 
     return JSON.parse(response.choices[0]?.message?.content || '{}') as ResearchPlan;
 }
@@ -77,32 +79,30 @@ Format ONLY as JSON:
 async function conductInvestigation(
     openai: OpenAI,
     message: string,
-    tracks: ResearchTrack[]
+    tracks: ResearchTrack[],
+    signal?: AbortSignal
 ): Promise<string> {
-    console.log(`Launching ${tracks.length} parallel research agents...`);
-
     const researchTasks = tracks.map(async (track) => {
-        console.log(`Agent [${track.id}] starting: ${track.title}`);
+        console.log(`  > Agent [${track.title}] starting...`);
         try {
             const result = await openai.chat.completions.create({
-                model: 'deepseek-chat',
+                model: MODEL,
                 messages: [
                     {
                         role: 'system',
                         content: `You are an expert Subject Matter Researcher for: ${track.title}.
 Focus: ${track.focus}
-Methodology: ${track.methodology}
-
-Provide a deep-dive analysis. Do not summarize; provide raw, detailed evidence, data-driven projections, and structural insights. Force yourself to find non-obvious connections.`
+Methodology: ${track.methodology}`
                     },
                     { role: 'user', content: message }
                 ]
-            });
-            console.log(`Agent [${track.id}] completed investigation.`);
-            return `### Track: ${track.title}\nFocus: ${track.focus}\nFindings: ${result.choices[0]?.message?.content}\n`;
-        } catch (error) {
-            console.error(`Agent [${track.id}] failed:`, error);
-            return `### Track: ${track.title}\nError: Failed to conduct investigation for this track.\n`;
+            }, { signal });
+            console.log(`  > Agent [${track.title}] completed.`);
+            return `### Track: ${track.title}\nFindings: ${result.choices[0]?.message?.content}\n`;
+        } catch (error: any) {
+            if (error.name === 'AbortError') throw error;
+            console.error(`  > Agent [${track.title}] failed:`, error.message);
+            return `### Track: ${track.title}\nError: Failed to conduct investigation.\n`;
         }
     });
 
@@ -113,16 +113,15 @@ Provide a deep-dive analysis. Do not summarize; provide raw, detailed evidence, 
 async function synthesizeFindings(
     openai: OpenAI,
     message: string,
-    researchCorpus: string
+    researchCorpus: string,
+    signal?: AbortSignal
 ): Promise<string> {
-    console.log('Synthesizing research corpus...');
     const response = await openai.chat.completions.create({
-        model: 'deepseek-chat',
+        model: MODEL,
         messages: [
             {
                 role: 'system',
-                content: `You are a Senior Synthesis Agent. Take the following multi-track research findings and compile them into a definitive, high-resolution report. 
-Address the user's original query with extreme depth. 
+                content: `You are a Senior Synthesis Agent. Compile findings into a definitive report.
 Structure:
 - Executive Summary
 - Multi-dimensional Analysis
@@ -132,7 +131,7 @@ Structure:
             },
             { role: 'user', content: `Original Question: ${message}\n\nResearch Corpus:\n${researchCorpus}` }
         ]
-    });
+    }, { signal });
 
     return response.choices[0]?.message?.content || "Failed to synthesize findings.";
 }
@@ -140,28 +139,27 @@ Structure:
 async function runReflectionLoop(
     openai: OpenAI,
     message: string,
-    initialReport: string
+    initialReport: string,
+    signal?: AbortSignal
 ): Promise<string> {
     let finalAnswer = initialReport;
     const maxIterations = 1;
 
-    console.log('Commencing Self-Reflection Loop...');
-
     for (let i = 0; i < maxIterations; i++) {
+        if (signal?.aborted) throw new Error('AbortError');
+        
         const response = await openai.chat.completions.create({
-            model: 'deepseek-chat',
+            model: MODEL,
             messages: [
                 {
                     role: 'system',
-                    content: `You are the Quality Control Agent for Deep Research. Evaluate the following report for:
+                    content: `You are the Quality Control Agent for Deep Research. Evaluate for:
 1. Logical consistency
-2. Depth of insight (avoiding surface-level platitudes)
-3. Direct responsiveness to the original user query.
+2. Depth of insight
+3. Direct responsiveness
 
-Identify exactly what is missing or weak. Then, provide a revised, perfected version of the report.
-Respond ONLY with JSON.
-
-Format:
+Identify what is missing or weak. Provide a revised version.
+Respond ONLY with JSON:
 {
   "isSatisfactory": boolean,
   "critique": string | null,
@@ -171,19 +169,16 @@ Format:
                 { role: 'user', content: `Original Question: ${message}\n\nCurrent Report:\n${finalAnswer}` }
             ],
             response_format: { type: 'json_object' }
-        });
+        }, { signal });
 
         const reflection = JSON.parse(response.choices[0]?.message?.content || '{}');
 
         if (reflection.isSatisfactory) {
-            console.log('Quality Control: Report satisfies depth requirements.');
             break;
         } else if (reflection.revisedReport) {
             finalAnswer = reflection.revisedReport;
-            console.log(`Quality Control: Applied improvements (Iteration ${i + 1}).`);
         }
     }
 
     return finalAnswer;
 }
-
