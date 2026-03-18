@@ -1,0 +1,64 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-lora);
+  --color-medium-green: #03A87C;
+}
+
+:root {
+  --background: #FAFAFA;
+  --foreground: #292929;
+  --card: #FFFFFF;
+  --card-foreground: #292929;
+  --popover: #FFFFFF;
+  --popover-foreground: #292929;
+  --primary: #242424;
+  --primary-foreground: #FAFAFA;
+  --secondary: #F2F2F2;
+  --secondary-foreground: #242424;
+  --muted: #F2F2F2;
+  --muted-foreground: #6B6B6B;
+  --accent: #03A87C;
+  --accent-foreground: #FFFFFF;
+  --destructive: #BA2525;
+  --border: #EBEBEB;
+  --input: #EBEBEB;
+  --ring: #03A87C;
+  --radius: 0rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-serif;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
+}

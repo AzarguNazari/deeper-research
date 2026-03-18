@@ -5,6 +5,7 @@ export interface ResearchTrack {
     title: string;
     focus: string;
     methodology: string;
+    hypothesis: string;
 }
 
 export interface ResearchPlan {
@@ -23,3 +24,11 @@ export interface ChatRequest {
     isDeeperResearch: boolean;
     history?: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 }
+
+export type ResearchProgressEvent =
+    | { type: 'status'; message: string }
+    | { type: 'track_start'; trackTitle: string }
+    | { type: 'track_done'; trackTitle: string }
+    | { type: 'done'; reply: string }
+    | { type: 'error'; message: string }
+    | { type: 'clarification'; question: string };
